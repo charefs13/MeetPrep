@@ -67,22 +67,22 @@ npm run test:e2e
 
 ### Fichiers principaux
 
-- [src/main.ts](/Users/leamyriamachaibou/MeetPrep/src/main.ts)
+- [src/main.ts]
   Process principal Electron. Cree la fenetre desktop, gere le cycle de vie de l application et genere le PDF natif.
 
-- [src/preload.ts](/Users/leamyriamachaibou/MeetPrep/src/preload.ts)
+- [src/preload.ts]
   Pont securise entre le renderer et Electron. Expose une API minimale au `window`.
 
-- [src/renderer.tsx](/Users/leamyriamachaibou/MeetPrep/src/renderer.tsx)
+- [src/renderer.tsx]
   Partie interface (React + React Router). Gere l etat, le rendu, la navigation et les evenements utilisateur.
 
-- [src/database.ts](/Users/leamyriamachaibou/MeetPrep/src/database.ts)
-  Couche de persistance SQLite utilisant `better-sqlite3` pour des requetes synchrones et rapides.
+- [src/database.ts]
+  Couche de persistance SQLite utilisant `sqlite3` pour des requetes asynchrones.
 
-- [src/index.css](/Users/leamyriamachaibou/MeetPrep/src/index.css)
+- [src/index.css]
   Styles globaux.
 
-- [index.html](/Users/leamyriamachaibou/MeetPrep/index.html)
+- [index.html]
   Point d entree HTML charge par Electron.
 
 ## 5. Comment fonctionne l'app Electron dans ce projet
@@ -106,7 +106,7 @@ Le fichier [src/preload.ts] expose une API limitee pour dialoguer de maniere sec
 - API base de donnees : `listAppointments`, `saveAppointment`, `deleteAppointment`, `savePreparation`
 - API export : `exportPdf(...)`
 
-Le renderer n appelle donc pas Electron ou `better-sqlite3` directement. Il passe par cette couche intermediaire, ce qui est plus propre et plus securise.
+Le renderer n appelle donc pas Electron ou `sqlite3` directement. Il passe par cette couche intermediaire, ce qui est plus propre et plus securise.
 
 ### 5.3 Le `renderer`
 
@@ -119,7 +119,7 @@ Le fichier [src/renderer.tsx] agit comme un frontend classique avec React :
 
 ## 6. Persistance des donnees
 
-L application utilise **SQLite** via la librairie `better-sqlite3`.
+L application utilise **SQLite** via la librairie `sqlite3`.
 
 Les donnees sont stockees localement dans un fichier `meetprep.sqlite` situe dans le dossier `userData` de l'application (chemin gere par Electron).
 
@@ -127,7 +127,7 @@ Concretement, cela veut dire :
 
 - pas de serveur distant
 - persistance locale performante grace a SQLite
-- requetes synchrones et securisees via des transactions SQLite
+- requetes asynchrones securisees
 - etat retrouve apres fermeture / reouverture de l application
 
 ## 7. Entites metier
@@ -206,37 +206,17 @@ L interface est geree via une **navigation multi-pages** (React Router) :
 - bouton de generation PDF.
 - bouton `Retour` pour revenir a la liste des rendez-vous sans perdre de donnees.
 
-## 11. Pourquoi ce projet est utile pour apprendre Electron
 
-Ce projet montre des notions tres concretes et alignees avec les bonnes pratiques modernes :
 
-- environnement complet **Vite + React** avec du routage (React Router).
-- persistance desktop robuste avec **better-sqlite3**.
-- architecture stricte `main / preload / renderer`.
-- communication **IPC** securisee.
-- infrastructure de **Tests** automatises (Vitest pour l'unitaire, Playwright pour l'E2E).
-- export PDF natif.
-
-## 12. Limites actuelles
+## 11. Limites actuelles
 
 - L'interface React pourrait encore etre decoupee en de multiples petits fichiers dans le dossier `src` pour separer les composants (Home, Prepare, Card, etc.).
 - Pas de synchronisation distante ou cloud.
 
-## 13. Evolutions possibles
+## 12. Evolutions possibles
 
 - Separer le code du `renderer.tsx` en plusieurs modules/composants distincts.
 - Ajouter une recherche ou un systeme de filtrage des rendez-vous par date.
 - Permettre a l'utilisateur de choisir le dossier de destination du PDF.
 
-## 14. Notes de demonstration
 
-Pour la soutenance ou la correction :
-
-- lancer `npm start`
-- verifier que le seed apparait au premier lancement (si la base SQLite est vierge).
-- creer un nouveau rendez-vous.
-- cliquer sur `Preparer le RDV` pour verifier la navigation React Router.
-- modifier la checklist et les notes.
-- cliquer sur `Generer le PDF du RDV` et verifier le PDF dans `Downloads`.
-- lancer `npm run test` pour verifier le fonctionnement de Vitest.
-- lancer `npm run test:e2e` pour verifier le fonctionnement de Playwright.
