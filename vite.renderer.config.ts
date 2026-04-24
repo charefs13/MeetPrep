@@ -1,4 +1,7 @@
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
-// https://vitejs.dev/config
-export default defineConfig({});
+// Le renderer utilise maintenant React comme couche de vue.
+export default defineConfig({
+  plugins: [react()],
+});
