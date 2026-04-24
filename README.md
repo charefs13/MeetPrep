@@ -9,7 +9,7 @@ L application sert a :
 - creer un rendez-vous client
 - modifier ou supprimer un rendez-vous
 - afficher les rendez-vous du jour
-- ouvrir un rendez-vous dans une zone de preparation dediee
+- ouvrir un rendez-vous dans une page de preparation dediee
 - suivre une checklist de preparation
 - saisir un contexte, un objectif et des notes live
 - generer un vrai PDF dans le dossier `Downloads`
@@ -17,7 +17,7 @@ L application sert a :
 
 ## 2. Seed de demonstration
 
-Au premier lancement, si aucun `localStorage` n existe encore, l application cree automatiquement un rendez-vous de demonstration pour faciliter les tests.
+Au premier lancement, si la base de donnees est vide, l application cree automatiquement un rendez-vous de demonstration pour faciliter les tests.
 
 Le seed contient :
 
@@ -29,12 +29,7 @@ Le seed contient :
 - notes : un texte de demonstration 
 - checklist : 3 points pre-remplis
 
-Ce seed est defini dans [src/renderer.ts].
-
-Important :
-
-- le seed n apparait qu au premier lancement si aucun etat n est deja sauvegarde
-- si vous voulez rejouer le seed, il faut vider le `localStorage` de l application ou repartir d un profil Electron propre
+Ce seed est defini dans [src/shared/appointments.ts].
 
 ## 3. Mise en route
 
@@ -55,10 +50,17 @@ npm install
 npm start
 ```
 
-### Verification du code
+### Verification du code et Tests
 
 ```bash
+# Linter le code
 npm run lint
+
+# Lancer les tests unitaires (Vitest)
+npm run test
+
+# Lancer les tests E2E (Playwright)
+npm run test:e2e
 ```
 
 ## 4. Structure du projet
@@ -71,8 +73,11 @@ npm run lint
 - [src/preload.ts](/Users/leamyriamachaibou/MeetPrep/src/preload.ts)
   Pont securise entre le renderer et Electron. Expose une API minimale au `window`.
 
-- [src/renderer.ts](/Users/leamyriamachaibou/MeetPrep/src/renderer.ts)
-  Partie interface. Gere l etat, le rendu HTML, les evenements utilisateur, la persistance locale et la logique metier des rendez-vous.
+- [src/renderer.tsx](/Users/leamyriamachaibou/MeetPrep/src/renderer.tsx)
+  Partie interface (React + React Router). Gere l etat, le rendu, la navigation et les evenements utilisateur.
+
+- [src/database.ts](/Users/leamyriamachaibou/MeetPrep/src/database.ts)
+  Couche de persistance SQLite utilisant `better-sqlite3` pour des requetes synchrones et rapides.
 
 - [src/index.css](/Users/leamyriamachaibou/MeetPrep/src/index.css)
   Styles globaux.
@@ -84,76 +89,52 @@ npm run lint
 
 ### 5.1 Le process `main`
 
-Le fichier [src/main.ts]correspond au coeur natif Electron.
+Le fichier [src/main.ts] correspond au coeur natif Electron.
 
 Il s occupe de :
 
 - creer la fenetre avec `BrowserWindow`
 - charger l interface Vite ou les fichiers buildes
-- ecouter les appels IPC venant du renderer
+- ecouter les appels IPC venant du renderer (y compris les operations de base de donnees)
 - generer le PDF avec `webContents.printToPDF()`
 - ecrire le fichier PDF dans `Downloads`
 
 ### 5.2 Le `preload`
 
-Le fichier [src/preload.ts] expose une API limitee :
+Le fichier [src/preload.ts] expose une API limitee pour dialoguer de maniere securisee avec le `main` :
 
-- `window.meetPrep.exportPdf(...)`
+- API base de donnees : `listAppointments`, `saveAppointment`, `deleteAppointment`, `savePreparation`
+- API export : `exportPdf(...)`
 
-Le renderer n appelle donc pas Electron directement. Il passe par cette couche intermediaire, ce qui est plus propre et plus securise.
+Le renderer n appelle donc pas Electron ou `better-sqlite3` directement. Il passe par cette couche intermediaire, ce qui est plus propre et plus securise.
 
 ### 5.3 Le `renderer`
 
-Le fichier [src/renderer.ts] agit comme un frontend classique :
+Le fichier [src/renderer.tsx] agit comme un frontend classique avec React :
 
-- il maintient un etat global
-- il genere l interface HTML
-- il ecoute les clics et les saisies
-- il sauvegarde les donnees localement
-- il demande au `main` de faire les actions desktop
+- utilise `react-router-dom` pour la navigation multi-pages (Accueil et Preparation).
+- maintient l'etat local en synchronisation avec le backend SQLite.
+- genere l interface avec des composants React.
+- demande au `main` d'effectuer les operations de lecture/ecriture en base ou la generation PDF.
 
 ## 6. Persistance des donnees
 
-L application n utilise pas encore une vraie base relationnelle.
+L application utilise **SQLite** via la librairie `better-sqlite3`.
 
-Les donnees sont stockees localement dans `localStorage` avec la cle :
-
-```ts
-const storageKey = 'meetprep-appointments';
-```
+Les donnees sont stockees localement dans un fichier `meetprep.sqlite` situe dans le dossier `userData` de l'application (chemin gere par Electron).
 
 Concretement, cela veut dire :
 
-- pas de serveur
-- pas de synchronisation distante
-- persistance locale sur la machine
+- pas de serveur distant
+- persistance locale performante grace a SQLite
+- requetes synchrones et securisees via des transactions SQLite
 - etat retrouve apres fermeture / reouverture de l application
 
 ## 7. Entites metier
 
-Meme s il n y a pas encore de base SQL, le projet repose sur un vrai modele de donnees.
+Le projet repose sur un modele de donnees relationnel (voir `src/database.ts` et `src/shared/appointments.ts`).
 
-### 7.1 `AppState`
-
-Etat global de l application.
-
-```ts
-type AppState = {
-  appointments: Appointment[];
-  draft: AppointmentDraft;
-  editingAppointmentId: string | null;
-  preparedAppointmentId: string | null;
-};
-```
-
-Role :
-
-- `appointments` : liste de tous les rendez-vous
-- `draft` : brouillon du formulaire de gauche
-- `editingAppointmentId` : rendez-vous actuellement edite dans le formulaire
-- `preparedAppointmentId` : rendez-vous actuellement ouvert dans la zone de preparation
-
-### 7.2 `Appointment`
+### 7.1 `Appointment`
 
 Entite principale de l application.
 
@@ -168,178 +149,94 @@ type Appointment = {
 };
 ```
 
-### 7.3 `FormFields`
+### 7.2 `FormFields`
 
-Bloc de contenu textuel rattache a un rendez-vous.
+Bloc de contenu textuel rattache a un rendez-vous (contexte, notes).
 
-```ts
-type FormFields = {
-  client: string;
-  company: string;
-  goal: string;
-  notes: string;
-};
-```
+### 7.3 `PreparationItem`
 
-### 7.4 `PreparationItem`
-
-Element de checklist rattache a un rendez-vous.
-
-```ts
-type PreparationItem = {
-  id: string;
-  label: string;
-  checked: boolean;
-};
-```
-
-### 7.5 `AppointmentDraft`
-
-Brouillon du formulaire de creation / modification a gauche.
-
-```ts
-type AppointmentDraft = {
-  title: string;
-  date: string;
-  time: string;
-  client: string;
-  company: string;
-};
-```
+Element de checklist rattache a un rendez-vous (relation 1 a N dans SQLite via `preparation_items`).
 
 ## 8. Relations entre les entites
 
-Si on traduit le projet en logique de base de donnees :
+En logique de base de donnees (SQLite) :
 
-- un `AppState` contient plusieurs `Appointment`
-- un `Appointment` contient un bloc `FormFields`
-- un `Appointment` contient plusieurs `PreparationItem`
-- un `AppointmentDraft` n est pas une entite metier persistante independante en base relationnelle
-  c est un brouillon d interface
-
-Vue relationnelle simplifiee :
-
-```txt
-AppState
-  -> Appointment (1..n)
-      -> FormFields (1..1)
-      -> PreparationItem (1..n)
-```
+- La table `appointments` contient tous les rendez-vous.
+- La table `preparation_items` contient les items de checklist et possede une cle etrangere `appointment_id` liee a la table `appointments`.
 
 ## 9. Cycle de vie fonctionnel
 
 ### 9.1 Ajouter un rendez-vous
 
-1. L utilisateur remplit le formulaire de gauche.
-2. Le contenu alimente `state.draft`.
-3. Le submit transforme ce brouillon en `Appointment`.
-4. Le rendez-vous est ajoute a `state.appointments`.
-5. L etat est sauvegarde dans `localStorage`.
-6. Le formulaire est reinitialise.
+1. L utilisateur remplit le formulaire sur la page d'accueil.
+2. Le contenu alimente l'etat local (draft).
+3. Le submit appelle `window.meetPrep.saveAppointment`.
+4. Le main process insere les donnees dans la table `appointments` via SQLite.
+5. L interface se rafraichit avec la liste mise a jour.
 
-### 9.2 Modifier un rendez-vous
+### 9.2 Preparer un rendez-vous
 
-1. L utilisateur clique sur `Modifier`.
-2. Le rendez-vous est charge dans le `draft`.
-3. L utilisateur enregistre.
-4. Les champs du rendez-vous sont mis a jour.
-
-### 9.3 Preparer un rendez-vous
-
-1. La section de droite affiche les `RDV du jour`.
+1. Sur la page d'accueil, la section affiche les `RDV du jour`.
 2. L utilisateur clique sur `Preparer le RDV`.
-3. L identifiant du rendez-vous est stocke dans `preparedAppointmentId`.
-4. Le panneau de preparation affiche :
-   - la checklist
-   - le contexte / objectif
-   - les notes live
-5. Chaque modification est sauvegardee.
+3. Le routeur React navigue vers la page `/prepare/:id`.
+4. L'utilisateur modifie la checklist ou les notes.
+5. Chaque modification declenche une requete IPC pour sauvegarder dans SQLite.
 
-### 9.4 Exporter le PDF
+### 9.3 Exporter le PDF
 
-1. Le renderer construit un HTML de compte-rendu.
+1. Le renderer React construit un HTML de compte-rendu a partir de l'etat actuel.
 2. Le renderer appelle `window.meetPrep.exportPdf(...)`.
-3. Le `preload` transmet la requete au `main` via IPC.
-4. Le `main` genere un vrai PDF avec Electron.
-5. Le PDF est ecrit dans `Downloads`.
-
-Le PDF contient :
-
-- le titre du rendez-vous
-- la date / heure du rendez-vous
-- la date de generation du document
-- le client
-- l entreprise
-- la checklist de preparation
-- le contexte / objectif
-- les notes live
+3. Le `main` genere un vrai PDF natif.
+4. Le PDF est ecrit dans `Downloads`.
 
 ## 10. Comportement de l interface
 
-L interface est separee en deux zones :
+L interface est geree via une **navigation multi-pages** (React Router) :
 
-### Colonne de gauche
+### Page d'Accueil (`/`)
 
 - formulaire d ajout / edition
-- liste des rendez-vous
+- liste complete des rendez-vous
+- liste des rendez-vous du jour avec un bouton pour preparer
 
-Cette colonne ne modifie pas automatiquement la zone de preparation.
+### Page de Preparation (`/prepare/:id`)
 
-### Colonne de droite
-
-- liste des rendez-vous du jour
-- bouton `Preparer le RDV`
-- panneau de preparation du rendez-vous selectionne
-
-Cette separation permet de :
-
-- creer plusieurs rendez-vous sans ecraser celui en cours de preparation
-- preparer un seul rendez-vous a la fois
-- garder une logique claire pour la demonstration
+- vue dediee a la prise de notes pour un rendez-vous precis.
+- checklist, contexte, et editeur de notes live.
+- bouton de generation PDF.
+- bouton `Retour` pour revenir a la liste des rendez-vous sans perdre de donnees.
 
 ## 11. Pourquoi ce projet est utile pour apprendre Electron
 
-Ce projet montre des notions tres concretes :
+Ce projet montre des notions tres concretes et alignees avec les bonnes pratiques modernes :
 
-- creation d une fenetre desktop avec Electron
-- separation `main / preload / renderer`
-- persistance locale simple
-- communication IPC
-- rendu d interface sans framework
-- gestion d etat manuelle
-- export PDF natif
-
-Pour une lecture pedagogique, je recommande l ordre suivant :
-
-1. [src/main.ts](/Users/leamyriamachaibou/MeetPrep/src/main.ts)
-2. [src/preload.ts](/Users/leamyriamachaibou/MeetPrep/src/preload.ts)
-3. [src/renderer.ts](/Users/leamyriamachaibou/MeetPrep/src/renderer.ts)
+- environnement complet **Vite + React** avec du routage (React Router).
+- persistance desktop robuste avec **better-sqlite3**.
+- architecture stricte `main / preload / renderer`.
+- communication **IPC** securisee.
+- infrastructure de **Tests** automatises (Vitest pour l'unitaire, Playwright pour l'E2E).
+- export PDF natif.
 
 ## 12. Limites actuelles
 
-Le projet reste volontairement simple :
-
-- stockage dans `localStorage` et non dans SQLite
-- tout le renderer est dans un seul fichier TypeScript
-- pas de tests automatises
-- pas de synchronisation multi-utilisateur
+- L'interface React pourrait encore etre decoupee en de multiples petits fichiers dans le dossier `src` pour separer les composants (Home, Prepare, Card, etc.).
+- Pas de synchronisation distante ou cloud.
 
 ## 13. Evolutions possibles
 
-- migrer le stockage vers SQLite
-- separer le code du renderer en modules
-- ajouter une recherche / des filtres
-- ajouter un statut de rendez-vous
-- ajouter la selection d un dossier d export PDF
-- ajouter des tests unitaires et end-to-end
+- Separer le code du `renderer.tsx` en plusieurs modules/composants distincts.
+- Ajouter une recherche ou un systeme de filtrage des rendez-vous par date.
+- Permettre a l'utilisateur de choisir le dossier de destination du PDF.
 
 ## 14. Notes de demonstration
 
 Pour la soutenance ou la correction :
 
 - lancer `npm start`
-- verifier que le seed apparait au premier lancement
-- ouvrir le rendez-vous du jour via `Preparer le RDV`
-- modifier la checklist, le contexte ou les notes
-- cliquer sur `Generer le PDF du RDV`
-- verifier le PDF dans `Downloads`
+- verifier que le seed apparait au premier lancement (si la base SQLite est vierge).
+- creer un nouveau rendez-vous.
+- cliquer sur `Preparer le RDV` pour verifier la navigation React Router.
+- modifier la checklist et les notes.
+- cliquer sur `Generer le PDF du RDV` et verifier le PDF dans `Downloads`.
+- lancer `npm run test` pour verifier le fonctionnement de Vitest.
+- lancer `npm run test:e2e` pour verifier le fonctionnement de Playwright.
