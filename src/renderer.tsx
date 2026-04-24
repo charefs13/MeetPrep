@@ -3,13 +3,27 @@ import './index.css';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-// Le renderer est maintenant une vraie application React.
-// L objectif de cette version est de rester pedagogique:
-// on garde un seul fichier principal pour que la logique reste facile a suivre.
+import {
+  Appointment,
+  AppointmentDraft,
+  AppointmentPreparationUpdate,
+  AppointmentUpsert,
+  appointmentLabel,
+  appointmentSubtitle,
+  createEmptyDraft,
+  todayIso,
+} from './shared/appointments';
+
+// Le renderer React ne stocke plus les rendez-vous dans localStorage.
+// Il dialogue maintenant avec le process main via le preload pour utiliser SQLite.
 
 declare global {
   interface Window {
     meetPrep?: {
+      listAppointments: () => Promise<Appointment[]>;
+      saveAppointment: (payload: AppointmentUpsert) => Promise<Appointment[]>;
+      deleteAppointment: (appointmentId: string) => Promise<Appointment[]>;
+      savePreparation: (payload: AppointmentPreparationUpdate) => Promise<Appointment[]>;
       exportPdf: (payload: { filename: string; html: string }) => Promise<{
         success: boolean;
         filePath?: string;
@@ -19,193 +33,7 @@ declare global {
   }
 }
 
-type FormFields = {
-  client: string;
-  company: string;
-  goal: string;
-  notes: string;
-};
-
-type PreparationItem = {
-  id: string;
-  label: string;
-  checked: boolean;
-};
-
-type Appointment = {
-  id: string;
-  title: string;
-  date: string;
-  time: string;
-  fields: FormFields;
-  preparationChecklist: PreparationItem[];
-};
-
-type AppointmentDraft = {
-  title: string;
-  date: string;
-  time: string;
-  client: string;
-  company: string;
-};
-
-type StoredState = {
-  appointments: Appointment[];
-  draft: AppointmentDraft;
-  editingAppointmentId: string | null;
-  preparedAppointmentId: string | null;
-};
-
 type StatusTone = 'default' | 'success' | 'error';
-
-const storageKey = 'meetprep-appointments';
-
-const createPreparationChecklist = (): PreparationItem[] => [
-  { id: 'approved-project', label: 'Projet approuve', checked: false },
-  { id: 'received-mockup', label: 'Maquette recue', checked: false },
-  { id: 'sent-contract', label: 'Contrat envoye', checked: false },
-];
-
-const createEmptyFields = (): FormFields => ({
-  client: '',
-  company: '',
-  goal: '',
-  notes: '',
-});
-
-const createEmptyDraft = (): AppointmentDraft => ({
-  title: '',
-  date: '',
-  time: '',
-  client: '',
-  company: '',
-});
-
-const todayIso = () => new Date().toISOString().slice(0, 10);
-
-const createSeedAppointment = (): Appointment => ({
-  id: crypto.randomUUID(),
-  title: 'Point projet refonte portail voyageurs',
-  date: todayIso(),
-  time: '10:30',
-  fields: {
-    client: 'Mohamed Saadi',
-    company: 'SNCF',
-    goal:
-      'Faire le point sur l avancement du portail, verifier les attendus fonctionnels et cadrer les prochaines validations.',
-    notes:
-      'Le client souhaite prioriser la stabilite du parcours mobile. Prevoir un suivi sur les retours utilisateurs et confirmer le calendrier de recette.',
-  },
-  preparationChecklist: [
-    { id: 'approved-project', label: 'Projet approuve', checked: true },
-    { id: 'received-mockup', label: 'Maquette recue', checked: true },
-    { id: 'sent-contract', label: 'Contrat envoye', checked: false },
-  ],
-});
-
-const createAppointmentFromDraft = (draft: AppointmentDraft): Appointment => ({
-  id: crypto.randomUUID(),
-  title: draft.title.trim() || 'Nouveau rendez-vous',
-  date: draft.date,
-  time: draft.time,
-  fields: {
-    ...createEmptyFields(),
-    client: draft.client,
-    company: draft.company,
-  },
-  preparationChecklist: createPreparationChecklist(),
-});
-
-// Cette normalisation permet de relire d anciens objets sauvegardes
-// meme si la structure a evolue.
-const normalizeAppointment = (appointment: Partial<Appointment>): Appointment => ({
-  id: appointment.id ?? crypto.randomUUID(),
-  title: appointment.title ?? 'Nouveau rendez-vous',
-  date: appointment.date ?? '',
-  time: appointment.time ?? '',
-  fields: {
-    client: appointment.fields?.client ?? '',
-    company: appointment.fields?.company ?? '',
-    goal: appointment.fields?.goal ?? '',
-    notes: appointment.fields?.notes ?? '',
-  },
-  preparationChecklist: createPreparationChecklist().map((defaultItem) => {
-    const existing = Array.isArray(appointment.preparationChecklist)
-      ? appointment.preparationChecklist.find((item) => item.id === defaultItem.id)
-      : undefined;
-
-    return {
-      ...defaultItem,
-      checked: existing ? Boolean(existing.checked) : defaultItem.checked,
-    };
-  }),
-});
-
-const normalizeDraft = (draft?: Partial<AppointmentDraft>): AppointmentDraft => ({
-  title: draft?.title ?? '',
-  date: draft?.date ?? '',
-  time: draft?.time ?? '',
-  client: draft?.client ?? '',
-  company: draft?.company ?? '',
-});
-
-const parseStoredState = (): StoredState => {
-  const savedState = localStorage.getItem(storageKey);
-
-  if (!savedState) {
-    const seed = createSeedAppointment();
-    return {
-      appointments: [seed],
-      draft: createEmptyDraft(),
-      editingAppointmentId: null,
-      preparedAppointmentId: seed.id,
-    };
-  }
-
-  try {
-    const parsed = JSON.parse(savedState) as Partial<StoredState>;
-    const appointments = Array.isArray(parsed.appointments)
-      ? parsed.appointments.map((appointment) => normalizeAppointment(appointment))
-      : [];
-
-    if (!appointments.length) {
-      const seed = createSeedAppointment();
-      return {
-        appointments: [seed],
-        draft: normalizeDraft(parsed.draft),
-        editingAppointmentId: parsed.editingAppointmentId ?? null,
-        preparedAppointmentId: seed.id,
-      };
-    }
-
-    return {
-      appointments,
-      draft: normalizeDraft(parsed.draft),
-      editingAppointmentId: parsed.editingAppointmentId ?? null,
-      preparedAppointmentId: parsed.preparedAppointmentId ?? null,
-    };
-  } catch {
-    const seed = createSeedAppointment();
-    return {
-      appointments: [seed],
-      draft: createEmptyDraft(),
-      editingAppointmentId: null,
-      preparedAppointmentId: seed.id,
-    };
-  }
-};
-
-const appointmentLabel = (appointment: Appointment) => {
-  const datePart = appointment.date || 'Date a definir';
-  const timePart = appointment.time ? ` a ${appointment.time}` : '';
-  return `${datePart}${timePart}`;
-};
-
-const appointmentSubtitle = (appointment: Appointment) => {
-  const client = appointment.fields.client || 'Client non renseigne';
-  const company = appointment.fields.company ? ` • ${appointment.fields.company}` : '';
-  return `${client}${company}`;
-};
 
 const statusClassName = (tone: StatusTone) => {
   if (tone === 'success') {
@@ -220,12 +48,11 @@ const statusClassName = (tone: StatusTone) => {
 };
 
 function App() {
-  // Tout l etat de l application vit dans des hooks React.
-  const initialState = useMemo(() => parseStoredState(), []);
-  const [appointments, setAppointments] = useState<Appointment[]>(initialState.appointments);
-  const [draft, setDraft] = useState<AppointmentDraft>(initialState.draft);
-  const [editingAppointmentId, setEditingAppointmentId] = useState<string | null>(initialState.editingAppointmentId);
-  const [preparedAppointmentId, setPreparedAppointmentId] = useState<string | null>(initialState.preparedAppointmentId);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [draft, setDraft] = useState<AppointmentDraft>(createEmptyDraft());
+  const [editingAppointmentId, setEditingAppointmentId] = useState<string | null>(null);
+  const [preparedAppointmentId, setPreparedAppointmentId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [appointmentStatus, setAppointmentStatus] = useState<{ message: string; tone: StatusTone }>({
     message: 'Remplissez les champs puis ajoutez un nouveau rendez-vous.',
     tone: 'default',
@@ -245,50 +72,71 @@ function App() {
     [appointments],
   );
 
-  // Toute modification importante est persistee localement.
-  useEffect(() => {
-    const nextState: StoredState = {
-      appointments,
-      draft,
-      editingAppointmentId,
-      preparedAppointmentId,
-    };
-
-    localStorage.setItem(storageKey, JSON.stringify(nextState));
-  }, [appointments, draft, editingAppointmentId, preparedAppointmentId]);
-
-  const isEditing = Boolean(editingAppointmentId);
-
-  const saveAppointmentFromDraft = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (editingAppointmentId) {
-      setAppointments((currentAppointments) =>
-        currentAppointments.map((appointment) =>
-          appointment.id === editingAppointmentId
-            ? {
-                ...appointment,
-                title: draft.title.trim() || 'Nouveau rendez-vous',
-                date: draft.date,
-                time: draft.time,
-                fields: {
-                  ...appointment.fields,
-                  client: draft.client,
-                  company: draft.company,
-                },
-              }
-            : appointment,
-        ),
-      );
-      setDraft(createEmptyDraft());
-      setEditingAppointmentId(null);
-      setAppointmentStatus({ message: 'Rendez-vous mis a jour.', tone: 'success' });
+  const refreshAppointments = async () => {
+    if (!window.meetPrep?.listAppointments) {
+      setAppointmentStatus({
+        message: 'La couche SQLite n est pas disponible.',
+        tone: 'error',
+      });
       return;
     }
 
-    setAppointments((currentAppointments) => [createAppointmentFromDraft(draft), ...currentAppointments]);
+    const rows = await window.meetPrep.listAppointments();
+    setAppointments(rows);
+    setPreparedAppointmentId((currentPreparedId) => {
+      if (currentPreparedId && rows.some((appointment) => appointment.id === currentPreparedId)) {
+        return currentPreparedId;
+      }
+
+      return rows.find((appointment) => appointment.date === todayIso())?.id ?? rows[0]?.id ?? null;
+    });
+  };
+
+  // Premier chargement: le renderer demande les rendez-vous a SQLite.
+  useEffect(() => {
+    void (async () => {
+      try {
+        await refreshAppointments();
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+  }, []);
+
+  const isEditing = Boolean(editingAppointmentId);
+
+  const saveAppointmentFromDraft = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!window.meetPrep?.saveAppointment) {
+      setAppointmentStatus({ message: 'Le module SQLite est indisponible.', tone: 'error' });
+      return;
+    }
+
+    const payload: AppointmentUpsert = {
+      id: editingAppointmentId ?? undefined,
+      title: draft.title.trim() || 'Nouveau rendez-vous',
+      date: draft.date,
+      time: draft.time,
+      client: draft.client,
+      company: draft.company,
+    };
+    const rows = await window.meetPrep.saveAppointment(payload);
+
+    setAppointments(rows);
     setDraft(createEmptyDraft());
-    setAppointmentStatus({ message: 'Nouveau rendez-vous ajoute.', tone: 'success' });
+    setEditingAppointmentId(null);
+    setAppointmentStatus({
+      message: isEditing ? 'Rendez-vous mis a jour.' : 'Nouveau rendez-vous ajoute.',
+      tone: 'success',
+    });
+
+    if (!isEditing) {
+      const createdAppointment = rows[0];
+      if (createdAppointment) {
+        setPreparedAppointmentId((currentPreparedId) => currentPreparedId ?? createdAppointment.id);
+      }
+    }
   };
 
   const startEditingAppointment = (appointmentId: string) => {
@@ -312,13 +160,17 @@ function App() {
     });
   };
 
-  const deleteAppointment = (appointmentId: string) => {
-    setAppointments((currentAppointments) =>
-      currentAppointments.filter((appointment) => appointment.id !== appointmentId),
-    );
+  const deleteAppointment = async (appointmentId: string) => {
+    if (!window.meetPrep?.deleteAppointment) {
+      setAppointmentStatus({ message: 'Le module SQLite est indisponible.', tone: 'error' });
+      return;
+    }
+
+    const rows = await window.meetPrep.deleteAppointment(appointmentId);
+    setAppointments(rows);
 
     if (preparedAppointmentId === appointmentId) {
-      setPreparedAppointmentId(null);
+      setPreparedAppointmentId(rows.find((appointment) => appointment.date === todayIso())?.id ?? rows[0]?.id ?? null);
     }
 
     if (editingAppointmentId === appointmentId) {
@@ -335,24 +187,38 @@ function App() {
     });
   };
 
-  const updatePreparedAppointment = (updater: (appointment: Appointment) => Appointment) => {
-    if (!preparedAppointmentId) {
+  const savePreparation = async (nextAppointment: Appointment, successMessage: string) => {
+    if (!window.meetPrep?.savePreparation) {
+      setFormStatus({ message: 'Le module SQLite est indisponible.', tone: 'error' });
       return;
     }
 
-    setAppointments((currentAppointments) =>
-      currentAppointments.map((appointment) =>
-        appointment.id === preparedAppointmentId ? updater(appointment) : appointment,
-      ),
-    );
+    const rows = await window.meetPrep.savePreparation({
+      id: nextAppointment.id,
+      goal: nextAppointment.fields.goal,
+      notes: nextAppointment.fields.notes,
+      preparationChecklist: nextAppointment.preparationChecklist,
+    });
+
+    setAppointments(rows);
+    setFormStatus({ message: successMessage, tone: 'success' });
   };
 
-  const savePreparation = (event: FormEvent<HTMLFormElement>) => {
+  const savePreparationForm = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setFormStatus({
-      message: 'Preparation du rendez-vous enregistree.',
-      tone: 'success',
-    });
+
+    if (!preparedAppointment) {
+      return;
+    }
+
+    await savePreparation(preparedAppointment, 'Preparation du rendez-vous enregistree.');
+  };
+
+  const updatePreparedAppointment = async (nextAppointment: Appointment, statusMessage: string) => {
+    setAppointments((currentAppointments) =>
+      currentAppointments.map((appointment) => (appointment.id === nextAppointment.id ? nextAppointment : appointment)),
+    );
+    await savePreparation(nextAppointment, statusMessage);
   };
 
   const exportSummary = async () => {
@@ -456,6 +322,14 @@ function App() {
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-200">
+        Chargement des rendez-vous depuis SQLite...
+      </div>
+    );
+  }
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.18),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(249,115,22,0.16),_transparent_28%)]" />
@@ -484,7 +358,6 @@ function App() {
               <label className="sm:col-span-2">
                 <span className="mb-2 block text-sm font-medium text-slate-200">Titre</span>
                 <input
-                  id="appointment-title"
                   value={draft.title}
                   onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
                   placeholder="Titre du RDV"
@@ -593,7 +466,9 @@ function App() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => deleteAppointment(appointment.id)}
+                            onClick={() => {
+                              void deleteAppointment(appointment.id);
+                            }}
                             className="rounded-xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-xs font-medium text-rose-200 transition hover:bg-rose-400/20"
                           >
                             Supprimer
@@ -696,7 +571,7 @@ function App() {
                       </div>
                     </div>
 
-                    <form className="grid gap-4" onSubmit={savePreparation}>
+                    <form className="grid gap-4" onSubmit={savePreparationForm}>
                       <section className="rounded-[1.75rem] border border-white/10 bg-slate-900/70 p-5 backdrop-blur">
                         <div className="mb-4 flex items-center justify-between">
                           <div>
@@ -714,18 +589,18 @@ function App() {
                                 type="checkbox"
                                 checked={item.checked}
                                 onChange={(event) => {
-                                  updatePreparedAppointment((appointment) => ({
-                                    ...appointment,
-                                    preparationChecklist: appointment.preparationChecklist.map((entry) =>
+                                  const nextAppointment: Appointment = {
+                                    ...preparedAppointment,
+                                    preparationChecklist: preparedAppointment.preparationChecklist.map((entry) =>
                                       entry.id === item.id
                                         ? { ...entry, checked: event.target.checked }
                                         : entry,
                                     ),
-                                  }));
-                                  setFormStatus({
-                                    message: 'Checklist de preparation mise a jour.',
-                                    tone: 'success',
-                                  });
+                                  };
+                                  void updatePreparedAppointment(
+                                    nextAppointment,
+                                    'Checklist de preparation mise a jour.',
+                                  );
                                 }}
                                 className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-950 text-cyan-400 focus:ring-cyan-400"
                               />
@@ -741,14 +616,14 @@ function App() {
                           rows={4}
                           value={preparedAppointment.fields.goal}
                           onChange={(event) => {
-                            updatePreparedAppointment((appointment) => ({
-                              ...appointment,
-                              fields: { ...appointment.fields, goal: event.target.value },
-                            }));
-                            setFormStatus({
-                              message: 'Brouillon du rendez-vous mis a jour automatiquement.',
-                              tone: 'default',
-                            });
+                            const nextAppointment: Appointment = {
+                              ...preparedAppointment,
+                              fields: { ...preparedAppointment.fields, goal: event.target.value },
+                            };
+                            void updatePreparedAppointment(
+                              nextAppointment,
+                              'Brouillon du rendez-vous mis a jour automatiquement.',
+                            );
                           }}
                           placeholder="Quel est le contexte et a quoi doit servir cette reunion ?"
                           className="w-full rounded-3xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/70 focus:ring-2 focus:ring-cyan-400/20"
@@ -761,14 +636,14 @@ function App() {
                           rows={14}
                           value={preparedAppointment.fields.notes}
                           onChange={(event) => {
-                            updatePreparedAppointment((appointment) => ({
-                              ...appointment,
-                              fields: { ...appointment.fields, notes: event.target.value },
-                            }));
-                            setFormStatus({
-                              message: 'Brouillon du rendez-vous mis a jour automatiquement.',
-                              tone: 'default',
-                            });
+                            const nextAppointment: Appointment = {
+                              ...preparedAppointment,
+                              fields: { ...preparedAppointment.fields, notes: event.target.value },
+                            };
+                            void updatePreparedAppointment(
+                              nextAppointment,
+                              'Brouillon du rendez-vous mis a jour automatiquement.',
+                            );
                           }}
                           placeholder="Saisissez les points cles, objections, engagements et prochaines actions..."
                           className="min-h-[320px] w-full rounded-[1.75rem] border border-white/10 bg-slate-950/80 px-4 py-4 text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/70 focus:ring-2 focus:ring-cyan-400/20"
@@ -783,7 +658,6 @@ function App() {
                           Enregistrer la preparation
                         </button>
                         <button
-                          id="export-button"
                           type="button"
                           onClick={() => {
                             void exportSummary();
@@ -817,5 +691,4 @@ if (!container) {
   throw new Error('App container not found');
 }
 
-// React prend maintenant la main sur le rendu de toute l interface.
 createRoot(container).render(<App />);

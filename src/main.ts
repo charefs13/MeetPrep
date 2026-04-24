@@ -3,6 +3,9 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 
+import { deleteAppointment, initializeDatabase, listAppointments, saveAppointment, savePreparation } from './database';
+import { AppointmentPreparationUpdate, AppointmentUpsert } from './shared/appointments';
+
 // Le process "main" est le point d entree Electron:
 // il cree les fenetres, gere le cycle de vie natif de l application
 // et execute les operations desktop sensibles comme l export PDF.
@@ -41,6 +44,15 @@ const createWindow = () => {
   // Laisse les DevTools ouverts pour faciliter l apprentissage et le debug.
   mainWindow.webContents.openDevTools();
 };
+
+// Le CRUD des rendez-vous est maintenant execute dans le process main,
+// car c est lui qui a acces a SQLite.
+ipcMain.handle('appointments:list', async () => listAppointments());
+ipcMain.handle('appointments:save', async (_event, payload: AppointmentUpsert) => saveAppointment(payload));
+ipcMain.handle('appointments:delete', async (_event, appointmentId: string) => deleteAppointment(appointmentId));
+ipcMain.handle('appointments:save-preparation', async (_event, payload: AppointmentPreparationUpdate) =>
+  savePreparation(payload),
+);
 
 // Le renderer ne peut pas ecrire un PDF directement sur le disque.
 // Il envoie donc une requete IPC au process main, qui fait le travail natif.
@@ -91,7 +103,10 @@ ipcMain.handle('appointments:export-pdf', async (_event, payload: ExportPdfPaylo
 });
 
 // Electron n autorise la creation des fenetres qu une fois l application prete.
-app.on('ready', createWindow);
+app.on('ready', async () => {
+  await initializeDatabase();
+  createWindow();
+});
 
 // Sur Windows/Linux on ferme l app quand toutes les fenetres sont fermees.
 // Sur macOS, on respecte l usage natif: l app reste ouverte tant que l utilisateur
