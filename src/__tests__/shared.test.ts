@@ -10,7 +10,7 @@ describe('Appointments Shared Utilities', () => {
   it('should create a valid seed appointment', () => {
     const seed = createSeedAppointment();
     expect(seed.id).toBeDefined();
-    expect(seed.title).toBe('Demonstration - RDV Client');
+    expect(seed.title).toBe('Point projet refonte portail voyageurs');
     expect(seed.fields.client).toBe('Mohamed Saadi');
     expect(seed.preparationChecklist.length).toBeGreaterThan(0);
   });
@@ -19,7 +19,7 @@ describe('Appointments Shared Utilities', () => {
     const seed = createSeedAppointment();
     seed.date = '2026-04-24';
     const label = appointmentLabel(seed);
-    expect(label).toContain('24 avril 2026'); // Example of locale fr-FR output depending on the exact implementation
+    expect(label).toBe('2026-04-24 a 10:30');
   });
 
   it('should correctly subtitle an appointment', () => {
@@ -27,6 +27,6 @@ describe('Appointments Shared Utilities', () => {
     seed.fields.client = 'Alice';
     seed.fields.company = 'Wonderland Inc';
     const subtitle = appointmentSubtitle(seed);
-    expect(subtitle).toBe('Alice - Wonderland Inc');
+    expect(subtitle).toBe('Alice • Wonderland Inc');
   });
 });
