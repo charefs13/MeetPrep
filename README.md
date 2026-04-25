@@ -72,6 +72,13 @@ npm run test:e2e
 > 3. **Ajout d'un nouveau RDV** : Remplit le formulaire de création de rendez-vous pour la date du jour, le soumet, et vérifie qu'il apparaît bien dans la liste (génère la capture `3-ajout-rdv.png`).
 > 4. **Navigation et Préparation** : Clique sur "Préparer le RDV" depuis la liste des rendez-vous du jour, et vérifie que la nouvelle page de préparation s'affiche correctement (génère la capture `4-page-preparation.png`).
 
+### Rapports d'Accessibilité et de Performance
+
+L'application respecte les bonnes pratiques web modernes grâce à React et Vite.
+Un audit complet a été généré avec **Google Lighthouse** (Performance, Accessibilité, Bonnes Pratiques, SEO).
+
+Le rapport généré est disponible dans le fichier `reports/lighthouse-report.html`. Il prouve notamment les excellents scores de l'interface en termes d'accessibilité (contraste, labels ARIA) et de performances de rendu.
+
 ## 4. Structure du projet
 
 ### Fichiers principaux
