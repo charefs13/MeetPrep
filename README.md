@@ -63,6 +63,15 @@ npm run test
 npm run test:e2e
 ```
 
+> **Note sur les tests E2E (Playwright)** :
+> Le test End-to-End (`e2e/example.spec.ts`) simule un utilisateur réel naviguant dans l'application. Avant de lancer ce test, il est recommandé de compiler l'application avec `npm run package` pour que l'interface React soit générée.
+> 
+> Le scénario de test automatisé suit ces étapes :
+> 1. **Chargement de la page** : Vérifie que l'application s'ouvre et charge l'interface (génère la capture `1-chargement.png`).
+> 2. **Suppression du rendez-vous (seed)** : Identifie le bouton "Supprimer" du rendez-vous par défaut et nettoie la base de données (génère la capture `2-suppression-seed.png`).
+> 3. **Ajout d'un nouveau RDV** : Remplit le formulaire de création de rendez-vous pour la date du jour, le soumet, et vérifie qu'il apparaît bien dans la liste (génère la capture `3-ajout-rdv.png`).
+> 4. **Navigation et Préparation** : Clique sur "Préparer le RDV" depuis la liste des rendez-vous du jour, et vérifie que la nouvelle page de préparation s'affiche correctement (génère la capture `4-page-preparation.png`).
+
 ## 4. Structure du projet
 
 ### Fichiers principaux
