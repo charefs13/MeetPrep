@@ -81,7 +81,7 @@ npm run test:e2e
 L'application respecte les bonnes pratiques web modernes grâce à React et Vite, ainsi qu'une architecture optimisée en **Code Splitting** (fractionnement du code avec `React.lazy`).
 
 Un audit complet a été généré avec **Google Lighthouse** (Performance, Accessibilité, Bonnes Pratiques, SEO).
-- **Performance : ~100/100** (Grâce à l'absence de requêtes réseau et au lazy-loading des composants).
+- **Performance : ~97/100** (Grâce à l'absence de requêtes réseau et au lazy-loading des composants).
 - **Accessibilité : ~100/100** (Grâce aux forts contrastes, balises sémantiques HTML et thèmes sombres adaptés).
 
 Le rapport détaillé complet est disponible dans le fichier `reports/lighthouse-report-prod.html` (à ouvrir dans votre navigateur) ou `reports/lighthouse-report.html`.
