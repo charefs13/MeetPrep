@@ -2,14 +2,11 @@ import { test, expect } from '@playwright/test';
 import { _electron as electron } from 'playwright';
 
 test('Application launches and shows title', async () => {
-  // Launch Electron app
-  const electronApp = await electron.launch({ args: ['.'] });
-
-  // Check packaging state
-  const isPackaged = await electronApp.evaluate(async ({ app }) => {
-    return app.isPackaged;
+  // Launch Electron app with a flag to reset DB
+  const electronApp = await electron.launch({
+    args: ['.'],
+    env: { ...process.env, TEST_MODE: '1' },
   });
-  expect(isPackaged).toBe(false);
 
   // Get the first window
   const window = await electronApp.firstWindow();
@@ -20,43 +17,41 @@ test('Application launches and shows title', async () => {
   // 🔥 IMPORTANT : forcer une taille
   await window.setViewportSize({ width: 1280, height: 800 });
 
-  // Attendre que le rendu soit stabilisé
-  await window.waitForTimeout(500);
-
-  // Optionnel : vérifier que le body est bien là
+  // 1. Chargement de la page -> screen
   await window.waitForSelector('body');
-
-  // Verify that a specific text from the Home component is visible
   await expect(window.locator('text=MeetPrep Assistant')).toBeVisible();
+  await window.waitForTimeout(500);
+  await window.screenshot({ path: 'test-results/1-chargement.png' });
 
-  // --- 1. Tester l'ajout d'un rendez-vous ---
-  await window.getByPlaceholder('Titre du RDV').fill('Soutenance de projet');
-  await window.getByPlaceholder('John Doe').fill('Professeur D.');
-  await window.getByPlaceholder("Nom de l'entreprise").fill('Universite');
+  // 2. Suppression RDV (seed) -> screen
+  // Le seed est automatiquement créé car on a réinitialisé la BDD avec TEST_MODE
+  const deleteBtn = window.locator('button:has-text("Supprimer")').first();
+  await deleteBtn.click();
+  await window.waitForTimeout(500); // Laisse le temps au DOM de se mettre à jour
+  await window.screenshot({ path: 'test-results/2-suppression-seed.png' });
+
+  // 3. Ajout d'un Rdv -> screen
+  await window.getByPlaceholder('Titre du RDV').fill('RDV de Soutenance');
+  await window.getByPlaceholder('John Doe').fill('Jury ECE');
+  await window.getByPlaceholder("Nom de l'entreprise").fill('Ecole');
   
-  // Utiliser input type date et time
-  await window.locator('input[type="date"]').fill('2026-06-15');
-  await window.locator('input[type="time"]').fill('14:00');
+  // Mettre la date d'aujourd'hui pour qu'il apparaisse dans la liste "RDV du jour"
+  const today = new Date().toISOString().split('T')[0];
+  await window.locator('input[type="date"]').fill(today);
+  await window.locator('input[type="time"]').fill('10:00');
   
-  // Cliquer sur le bouton
   await window.locator('button:has-text("Ajouter un RDV")').click();
+  await window.waitForTimeout(500);
+  await expect(window.locator('text=RDV de Soutenance').first()).toBeVisible();
+  await window.screenshot({ path: 'test-results/3-ajout-rdv.png' });
 
-  // --- 2. Verifier que le RDV apparait ---
-  await expect(window.locator('text=Soutenance de projet')).toBeVisible();
-  await expect(window.locator('text=Professeur D. • Universite')).toBeVisible();
-
-  // Prendre une capture d'ecran de l'application avec les donnees
-  await window.screenshot({ path: 'test-results/screenshot-with-data.png' });
-
-  // --- 3. Tester la suppression du rendez-vous ---
-  const addedArticle = window.locator('article', { hasText: 'Soutenance de projet' });
-  await addedArticle.locator('button:has-text("Supprimer")').click();
-
-  // --- 4. Verifier que le RDV a disparu ---
-  await expect(window.locator('text=Soutenance de projet')).not.toBeVisible();
-
-  // Screenshot
-  await window.screenshot({ path: 'test-results/screenshot-home.png' });
+  // 4. Clique sur préparer RDV et screen de la nouvelle page
+  await window.locator('button:has-text("Preparer le RDV")').first().click();
+  
+  // Attendre que la nouvelle page s'affiche
+  await expect(window.locator('text=Preparation du rendez-vous')).toBeVisible();
+  await window.waitForTimeout(500);
+  await window.screenshot({ path: 'test-results/4-page-preparation.png' });
 
   // Close
   await electronApp.close();

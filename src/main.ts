@@ -41,8 +41,11 @@ const createWindow = () => {
     );
   }
 
-  // Laisse les DevTools ouverts pour faciliter l apprentissage et le debug.
-  mainWindow.webContents.openDevTools();
+  // Laisse les DevTools ouverts pour faciliter l apprentissage,
+  // sauf si on est en train d'executer les tests E2E.
+  if (!process.env.TEST) {
+    mainWindow.webContents.openDevTools();
+  }
 };
 
 // Le CRUD des rendez-vous est maintenant execute dans le process main,
