@@ -11,6 +11,17 @@ import {
   createSeedAppointment,
 } from './shared/appointments';
 
+// ==========================================
+// ARCHITECTURE BASE DE DONNÉES (MAIN PROCESS)
+// ==========================================
+// Ce fichier est exécuté côté serveur (Node.js) dans le process "main" d'Electron.
+// Il gère toute la logique de persistance avec `sqlite3`.
+//
+// Concepts clés :
+// 1. `sqlite3` est basé sur des callbacks asynchrones (ex: db.run(sql, params, callback)).
+// 2. Pour garder un code moderne et lisible (async/await), on crée de petites fonctions 
+//    utilitaires (`run`, `all`, `get`) qui "promisifient" (transforment en Promises) ces callbacks.
+
 type AppointmentRow = {
   id: string;
   title: string;
@@ -135,7 +146,10 @@ const buildAppointmentList = async (db: sqlite3.Database): Promise<Appointment[]
   }));
 };
 
-// Initialise les tables SQLite et injecte le seed si la base est vide.
+// ==========================================
+// INITIALISATION DE LA BASE DE DONNÉES
+// ==========================================
+// Initialise les tables SQLite et injecte un rendez-vous "seed" de démonstration si la base est vide.
 export const initializeDatabase = async () => {
   const db = openDatabase();
 

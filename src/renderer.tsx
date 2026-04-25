@@ -15,8 +15,13 @@ import {
   todayIso,
 } from './shared/appointments';
 
-// Le renderer React ne stocke plus les rendez-vous dans localStorage.
-// Il dialogue maintenant avec le process main via le preload pour utiliser SQLite.
+// ==========================================
+// ARCHITECTURE GLOBALE DU FRONTEND (RENDERER)
+// ==========================================
+// 1. React & Vite : L'interface est construite avec des composants React. Vite gère le rechargement à chaud en dev.
+// 2. React Router (HashRouter) : Permet de créer une "Navigation Multi-pages" sans recharger l'application Electron.
+// 3. IPC (Inter-Process Communication) : Le renderer ne parle JAMAIS directement à SQLite ou Electron. 
+//    Il passe par l'objet `window.meetPrep` (exposé par le fichier preload.ts) pour demander au process `main` de le faire.
 
 declare global {
   interface Window {
@@ -625,7 +630,9 @@ function MainApp() {
 
   return (
     <HashRouter>
+      {/* Le HashRouter gère l'historique de navigation de façon compatible avec les fichiers locaux d'Electron */}
       <Routes>
+        {/* Route 1: Page d'accueil */}
         <Route 
           path="/" 
           element={
@@ -642,6 +649,7 @@ function MainApp() {
             />
           } 
         />
+        {/* Route 2: Page de préparation spécifique à un ID */}
         <Route 
           path="/prepare/:id" 
           element={
